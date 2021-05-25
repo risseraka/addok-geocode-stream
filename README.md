@@ -43,3 +43,10 @@ Options:
 ```bash
 cat my-addresses.csv | addok-geocode --columns numero,voie,code_postal,ville --semicolon > my-geocoded-addresses.csv
 ```
+
+#### Test with example file
+
+```bash
+npm install
+cat examples/search.csv | ./cli.js
+```
