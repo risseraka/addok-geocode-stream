@@ -1,17 +1,30 @@
 #!/usr/bin/env node
-const {pipeline} = require('stream')
-const yargs = require('yargs')
-const parse = require('csv-parser')
-const stringify = require('csv-write-stream')
-const {decodeStream} = require('./lib/decode')
-const {createGeocodeStream} = require('.')
+/* eslint n/file-extension-in-import: off */
+import path from 'node:path'
+import process from 'node:process'
+import {pipeline} from 'node:stream'
+import yargs from 'yargs'
+import {hideBin} from 'yargs/helpers'
+import parse from 'csv-parser'
+import stringify from 'csv-write-stream'
+import {createCluster} from 'addok-cluster'
+import {decodeStream} from './lib/decode.js'
+import {createGeocodeStream} from './index.js'
 
-const {argv} = yargs
+const {argv} = yargs(hideBin(process.argv))
   .usage('$0 [options]')
   .detectLocale(false)
+  .option('reverse', {
+    describe: 'Reverse mode',
+    boolean: true
+  })
   .option('service', {
     describe: 'Set geocoding service URL',
     default: 'https://api-adresse.data.gouv.fr'
+  })
+  .option('strategy', {
+    describe: 'Set geocoding strategy: csv, batch or cluster',
+    default: 'csv'
   })
   .option('columns', {
     describe: 'Select columns to geocode, in the right order',
@@ -22,6 +35,12 @@ const {argv} = yargs
   })
   .option('postcode', {
     describe: 'Filter results by postcode'
+  })
+  .option('lon', {
+    describe: 'Define longitude column (geo affinity)'
+  })
+  .option('lat', {
+    describe: 'Define latitude column (geo affinity)'
   })
   .option('semicolon', {
     alias: 'semi',
@@ -38,7 +57,7 @@ const {argv} = yargs
   })
   .option('result', {
     describe: 'Select columns you want to be added to the result by the geocoder. Default: all',
-    coerce: c => c.split(',')
+    coerce: c => c ? c.split(',') : []
   })
   .option('bucket', {
     describe: 'Set how many rows are sent in each request',
@@ -48,27 +67,29 @@ const {argv} = yargs
   .option('concurrency', {
     describe: 'Set how many requests must be executed concurrently',
     type: 'number',
-    coerce: v => {
+    coerce(v) {
       if (!v) {
-        return 1
+        return
       }
 
-      if (!v.match(/\d+/)) {
+      if (!/\d+/.test(v)) {
         throw new Error('Not supported value for concurrency')
       }
 
-      const parsedValue = parseInt(v, 10)
+      const parsedValue = Number.parseInt(v, 10)
       if (parsedValue <= 0) {
         throw new Error('Not supported value for concurrency')
       }
 
       return parsedValue
-    },
-    default: '1'
+    }
   })
   .option('encoding', {
     describe: 'Set data encoding. Can be detected automatically',
     choices: ['utf8', 'latin1']
+  })
+  .option('clusterConfig', {
+    describe: 'Path to addok config module (addok.conf)'
   })
 
 function getSeparator(argv) {
@@ -88,17 +109,26 @@ function getSeparator(argv) {
 }
 
 const separator = getSeparator(argv)
-const {service, concurrency, columns, bucket, result} = argv
+const {reverse, service, strategy, concurrency, columns, bucket, result, clusterConfig} = argv
 
 function onUnwrap(totalCount) {
   console.error(`    geocoding progress: ${totalCount}`)
+}
+
+let cluster
+if (strategy === 'cluster') {
+  cluster = await createCluster({addokConfigModule: path.resolve(clusterConfig)})
 }
 
 pipeline(
   process.stdin,
   decodeStream(),
   parse({separator}),
-  createGeocodeStream(service, {
+  createGeocodeStream({
+    reverse,
+    serviceUrl: service,
+    strategy,
+    cluster,
     columns,
     concurrency,
     bucketSize: bucket,
@@ -107,9 +137,13 @@ pipeline(
   }),
   stringify({separator}),
   process.stdout,
-  err => {
-    if (err) {
-      console.error(err)
+  error => {
+    if (cluster) {
+      cluster.end()
+    }
+
+    if (error) {
+      console.error(error)
       process.exit(1)
     }
   }
