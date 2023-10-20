@@ -23,7 +23,7 @@ Options:
   --reverse            Reverse mode                                    [boolean]
   --service            Set geocoding service URL
                                    [default: "https://api-adresse.data.gouv.fr"]
-  --strategy           Set geocoding strategy: csv, batch or cluster
+  --strategy           Set geocoding strategy: csv or batch
                                                                 [default: "csv"]
   --columns            Select columns to geocode, in the right order
   --citycode           Filter results by citycode
@@ -41,7 +41,6 @@ Options:
                                                                         [number]
   --encoding           Set data encoding. Can be detected automatically
                                                      [choices: "utf8", "latin1"]
-  --clusterConfig      Path to addok config module (addok.conf)
 ```
 
 #### Example

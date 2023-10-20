@@ -7,7 +7,6 @@ import yargs from 'yargs'
 import {hideBin} from 'yargs/helpers'
 import parse from 'csv-parser'
 import stringify from 'csv-write-stream'
-import {createCluster} from 'addok-cluster'
 import {decodeStream} from './lib/decode.js'
 import {createGeocodeStream} from './index.js'
 
@@ -23,7 +22,7 @@ const {argv} = yargs(hideBin(process.argv))
     default: 'https://api-adresse.data.gouv.fr'
   })
   .option('strategy', {
-    describe: 'Set geocoding strategy: csv, batch or cluster',
+    describe: 'Set geocoding strategy: csv or batch',
     default: 'csv'
   })
   .option('columns', {
@@ -88,9 +87,6 @@ const {argv} = yargs(hideBin(process.argv))
     describe: 'Set data encoding. Can be detected automatically',
     choices: ['utf8', 'latin1']
   })
-  .option('clusterConfig', {
-    describe: 'Path to addok config module (addok.conf)'
-  })
 
 function getSeparator(argv) {
   if (argv.semicolon) {
@@ -109,15 +105,10 @@ function getSeparator(argv) {
 }
 
 const separator = getSeparator(argv)
-const {reverse, service, strategy, concurrency, columns, bucket, result, clusterConfig} = argv
+const {reverse, service, strategy, concurrency, columns, bucket, result} = argv
 
 function onUnwrap(totalCount) {
   console.error(`    geocoding progress: ${totalCount}`)
-}
-
-let cluster
-if (strategy === 'cluster') {
-  cluster = await createCluster({addokConfigModule: path.resolve(clusterConfig)})
 }
 
 pipeline(
@@ -128,7 +119,6 @@ pipeline(
     reverse,
     serviceUrl: service,
     strategy,
-    cluster,
     columns,
     concurrency,
     bucketSize: bucket,
@@ -138,10 +128,6 @@ pipeline(
   stringify({separator}),
   process.stdout,
   error => {
-    if (cluster) {
-      cluster.end()
-    }
-
     if (error) {
       console.error(error)
       process.exit(1)
